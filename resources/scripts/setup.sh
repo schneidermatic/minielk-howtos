@@ -24,7 +24,7 @@
 # PLATFORM:     Noarch
 # PURPOSE:      setup the elastic-stack environment
 #==============================================================================
-SLEEP_TIME=5
+SLEEP_TIME=20
 
 ##----------------------------------------
 ## SETUP FUNCTIONS

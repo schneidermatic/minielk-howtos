@@ -29,8 +29,9 @@
 ## SETUP FUNCTIONS
 ##----------------------------------------
 newrel() {
+    read -p "Enter new release (i.e. 8.15.3): " NEW_RELEASE
     for file in $(find $PROJECT_HOME -name '.env'); do
-      grep -rl ELASTIC_RELEASE $file | xargs sed -i "s/ELASTIC_RELEASE=.*/$NEW_RELEASE/g"
+      grep -rl ELASTIC_RELEASE $file | xargs sed -i "s/STACK_VERSION=.*/$NEW_RELEASE/g"
     done
 }
 
