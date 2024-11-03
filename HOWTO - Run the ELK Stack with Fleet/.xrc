@@ -33,7 +33,10 @@ export RESOURCES_HOME="$PROJECT_HOME/../resources"
 ##----------------------------------------
 x_getcert() {
     docker cp es-cluster-es01-1:/usr/share/elasticsearch/config/certs/ca/ca.crt "$PROJECT_HOME/cert"
-    openssl x509 -fingerprint -sha256 -noout -in $PROJECT_HOME/cert/ca.crt | awk -F"=" {' print $2 '} | sed s/://g > "$PROJECT_HOME/cert/ca.sha256"
-    echo "CA SHA256: $(cat $PROJECT_HOME/cert/ca.sha256)"
-    echo "CA Cert: $(cat $PROJECT_HOME/cert/ca.crt)"
+    openssl x509 -fingerprint -sha256 -noout -in "$PROJECT_HOME/cert/ca.crt" | awk -F"=" {' print $2 '} | sed s/://g > "$PROJECT_HOME/cert/ca.sha256"
+    SHA256=$(cat "$PROJECT_HOME/cert/ca.sha256")
+    CRT=$(cat "$PROJECT_HOME/cert/ca.crt")
+    echo "$SHA256"
+    echo ""
+    echo "$CRT"
 }
