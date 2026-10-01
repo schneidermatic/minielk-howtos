@@ -60,8 +60,33 @@ then `x_down`.
 - Healthchecks gate startup ordering (e.g. Kibana waits on `es01`'s healthcheck, Beats/Logstash wait
   on Kibana's). When adding a new service, follow this `depends_on` + `healthcheck` chain pattern
   rather than fixed sleeps.
-- Default network is named `elastic` (or declared explicitly per-recipe) so services across a
-  recipe's containers can resolve each other by service name.
+- All services in a recipe must share one Docker network — declare it once at the top level
+  (`networks: default: name: elastic`) rather than mixing the implicit default network with an
+  explicitly-declared one per service; a past bug in the PostgreSQL Connector recipe did exactly
+  that and silently left `ec01` unable to resolve `es01` at all.
+- A one-shot init-container pattern (see `connector-setup` in the PostgreSQL Connector recipe) can
+  fully automate setup that would otherwise require clicking through Kibana: it calls the relevant
+  REST API, writes whatever config file the next service needs into a shared volume, and the
+  dependent service waits on it via `depends_on: <init-service>: condition:
+  service_completed_successfully`. Compose only reruns a completed one-shot service after its
+  container is removed (e.g. by `x_down`), not on a plain `x_up`/restart.
+
+## Elastic 9.x gotchas (bumping `STACK_VERSION` further)
+
+These broke silently when the repo moved from 8.x to 9.5.4 (see `CHANGES.md`) and are easy to miss
+on a future version bump since they don't fail the `docker compose` config, only the pull or the
+behavior at runtime:
+
+- The Elastic Agent image moved from `docker.elastic.co/beats/elastic-agent` to
+  `docker.elastic.co/elastic-agent/elastic-agent` as of 9.0 (used by Fleet's `fleet-server`).
+- The self-managed connectors image moved from
+  `docker.elastic.co/enterprise-search/elastic-connectors` to
+  `docker.elastic.co/integrations/elastic-connectors` as of 9.0 (Enterprise Search itself is gone
+  in 9.0+); the connector service version must match the Elasticsearch version.
+- Legacy/internal stack monitoring (`xpack.monitoring.enabled`/`xpack.monitoring.collection.enabled`)
+  is behind a feature flag, off by default, as of 9.0 — also set
+  `xpack.monitoring.allow_legacy_collection=true` on every node that should self-monitor, or
+  monitoring data silently never ships.
 
 ## Writing READMEs
 
