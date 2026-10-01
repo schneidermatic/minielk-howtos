@@ -1,0 +1,221 @@
+---
+version: '3.7'
+services:
+  setup:
+    image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION}
+    volumes:
+      - certs:/usr/share/elasticsearch/config/certs
+    user: "0"
+    command: >
+      bash -c '
+        if [ x${ELASTIC_PASSWORD} == x ]; then
+          echo "Set the ELASTIC_PASSWORD environment variable in the .env file";
+          exit 1;
+        elif [ x${KIBANA_PASSWORD} == x ]; then
+          echo "Set the KIBANA_PASSWORD environment variable in the .env file";
+          exit 1;
+        elif [ x${LOGSTASH_PASSWORD} == x ]; then
+          echo "Set the LOGSTASH_PASSWORD environment variable in the .env file";
+          exit 1;
+        fi;
+        if [ ! -f config/certs/ca.zip ]; then
+          echo "Creating CA";
+          bin/elasticsearch-certutil ca --silent --pem -out config/certs/ca.zip;
+          unzip config/certs/ca.zip -d config/certs;
+        fi;
+        if [ ! -f config/certs/certs.zip ]; then
+          echo "Creating certs";
+          echo -ne \
+          "instances:\n"\
+          "  - name: es01\n"\
+          "    dns:\n"\
+          "      - es01\n"\
+          "      - localhost\n"\
+          "    ip:\n"\
+          "      - 127.0.0.1\n"\
+          "  - name: kb01\n"\
+          "    dns:\n"\
+          "      - kb01\n"\
+          "      - localhost\n"\
+          "    ip:\n"\
+          "      - 127.0.0.1\n"\
+          "  - name: ls01\n"\
+          "    dns:\n"\
+          "      - ls01\n"\
+          "      - localhost\n"\
+          "    ip:\n"\
+          "      - 127.0.0.1\n"\
+          "  - name: ls02\n"\
+          "    dns:\n"\
+          "      - ls02\n"\
+          "      - localhost\n"\
+          "    ip:\n"\
+          "      - 127.0.0.1\n"\
+          > config/certs/instances.yml;
+          bin/elasticsearch-certutil cert --silent --pem -out config/certs/certs.zip --in config/certs/instances.yml --ca-cert config/certs/ca/ca.crt --ca-key config/certs/ca/ca.key;
+          unzip config/certs/certs.zip -d config/certs;
+        fi;
+        echo "Setting file permissions"
+        chown -R root:root config/certs;
+        find . -type d -exec chmod 750 \{\} \;;
+        find . -type f -exec chmod 640 \{\} \;;
+        echo "Waiting for Elasticsearch availability";
+        until curl -s --cacert config/certs/ca/ca.crt https://es01:9200 | grep -q "missing authentication credentials"; do sleep 30; done;
+        echo "Setting kibana_system password";
+        until curl -s -X POST --cacert config/certs/ca/ca.crt -u "elastic:${ELASTIC_PASSWORD}" -H "Content-Type: application/json" https://es01:9200/_security/user/kibana_system/_password -d "{\"password\":\"${KIBANA_PASSWORD}\"}" | grep -q "^{}"; do sleep 10; done;
+        echo "All done!";
+      '
+    healthcheck:
+      test: ["CMD-SHELL", "[ -f config/certs/es01/es01.crt ]"]
+      interval: 1s
+      timeout: 5s
+      retries: 120
+  
+  es01:
+    depends_on:
+      setup:
+        condition: service_healthy
+    image: docker.elastic.co/elasticsearch/elasticsearch:${STACK_VERSION}
+    volumes:
+      - ~/elastax/elastax-010/:/usr/share/elasticsearch/backup
+      - certs:/usr/share/elasticsearch/config/certs
+      - esdata01:/usr/share/elasticsearch/data
+    ports:
+      - ${ES_PORT}:9200
+    environment:
+      - node.name=es01
+      - cluster.name=${CLUSTER_NAME}
+      - cluster.initial_master_nodes=es01
+      - discovery.seed_hosts=es01:9300
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - bootstrap.memory_lock=true
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=true
+      - xpack.security.http.ssl.key=certs/es01/es01.key
+      - xpack.security.http.ssl.certificate=certs/es01/es01.crt
+      - xpack.security.http.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.http.ssl.verification_mode=certificate
+      - xpack.security.transport.ssl.enabled=true
+      - xpack.security.transport.ssl.key=certs/es01/es01.key
+      - xpack.security.transport.ssl.certificate=certs/es01/es01.crt
+      - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
+      - xpack.security.transport.ssl.verification_mode=certificate
+      - xpack.license.self_generated.type=${LICENSE}
+      - "ES_JAVA_OPTS=-Xmx512m -Xms512m"
+    mem_limit: ${MEM_LIMIT}
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -s --cacert config/certs/ca/ca.crt https://localhost:9200 | grep -q 'missing authentication credentials'",
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 120
+      
+  kb01:
+      depends_on:
+        es01:
+          condition: service_healthy
+      image: docker.elastic.co/kibana/kibana:${STACK_VERSION}
+      volumes:
+        - certs:/usr/share/kibana/config/certs
+        - kbdata01:/usr/share/kibana/data
+      ports:
+        - ${KIBANA_PORT}:5601
+      environment:
+        - SERVERNAME=kb01
+        - SERVER_SSL_ENABLED=true
+        - SERVER_SSL_CERTIFICATE=/usr/share/kibana/config/certs/kb01/kb01.crt
+        - SERVER_SSL_KEY=/usr/share/kibana/config/certs/kb01/kb01.key
+        - ELASTICSEARCH_HOSTS=https://es01:9200
+        - ELASTICSEARCH_USERNAME=${KIBANA_USER}
+        - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD}
+        - ELASTICSEARCH_SSL_CERTIFICATEAUTHORITIES=config/certs/ca/ca.crt
+      mem_limit: ${MEM_LIMIT}
+      healthcheck:
+        test:
+          [
+            "CMD-SHELL",
+            "curl -s -I http://localhost:5601 | grep -q 'HTTP/1.1 302 Found'",
+          ]
+        interval: 10s
+        timeout: 10s
+        retries: 120
+
+  ls01:
+    user: root
+    image: docker.elastic.co/logstash/logstash:${STACK_VERSION}
+    container_name: ls01
+    environment:
+      - 'LOGSTASH_USER=${LOGSTASH_USER}'
+      - 'LOGSTASH_PASSWORD=${LOGSTASH_PASSWORD}'
+      - PIPELINE_WORKERS=2
+      - xpack.monitoring.enabled=true
+      - xpack.monitoring.allow_legacy_collection=true
+      - xpack.monitoring.elasticsearch.username=${ELASTIC_USER}
+      - xpack.monitoring.elasticsearch.password=${ELASTIC_PASSWORD}
+      - xpack.monitoring.elasticsearch.hosts=https://es01:9200
+      - xpack.monitoring.collection.interval=30s
+      - xpack.monitoring.collection.pipeline.details.enabled=true
+      - xpack.monitoring.elasticsearch.ssl.certificate_authority=/usr/share/logstash/certs/ca/ca.crt
+    volumes:
+      - './resources/ls01/pipelines.yml:/usr/share/logstash/config/pipelines.yml'
+      - './resources/ls01/pipeline:/usr/share/logstash/pipeline'
+      - lsdata01:/usr/share/logstash/data
+      - certs:/usr/share/logstash/certs
+    ports: 
+      - '9600:9600'
+      - '5044:5044'
+      - '5800-5899:5800-5899'
+      - '8080:8080'
+    depends_on: 
+      - 'es01'
+    healthcheck:
+      test: curl -s http://localhost:9600 >/dev/null; if [[ $$? == 52 ]]; then echo 0; else echo 1; fi
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  ls02:
+    user: root
+    image: docker.elastic.co/logstash/logstash:${STACK_VERSION}
+    container_name: ls02
+    environment:
+      - 'LOGSTASH_USER=${LOGSTASH_USER}'
+      - 'LOGSTASH_PASSWORD=${LOGSTASH_PASSWORD}'
+      - PIPELINE_WORKERS=1
+      - xpack.monitoring.enabled=true
+      - xpack.monitoring.allow_legacy_collection=true
+      - xpack.monitoring.elasticsearch.username=${ELASTIC_USER}
+      - xpack.monitoring.elasticsearch.password=${ELASTIC_PASSWORD}
+      - xpack.monitoring.elasticsearch.hosts=https://es01:9200
+      - xpack.monitoring.collection.interval=30s
+      - xpack.monitoring.collection.pipeline.details.enabled=true
+      - xpack.monitoring.elasticsearch.ssl.certificate_authority=/usr/share/logstash/certs/ca/ca.crt
+    volumes:
+      - './resources/ls02/pipelines.yml:/usr/share/logstash/config/pipelines.yml'
+      - './resources/ls02/pipeline:/usr/share/logstash/pipeline'
+      - lsdata02:/usr/share/logstash/data
+      - certs:/usr/share/logstash/certs
+    ports: 
+      - '9601:9600'
+      - '8081:8081'
+    depends_on: 
+      - 'es01'
+    healthcheck:
+      test: curl -s http://localhost:9600 >/dev/null; if [[ $$? == 52 ]]; then echo 0; else echo 1; fi
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  certs:
+  esdata01:
+  kbdata01:
+  lsdata01:
+  lsdata02:

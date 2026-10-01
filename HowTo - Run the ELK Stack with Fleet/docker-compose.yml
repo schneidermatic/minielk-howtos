@@ -111,6 +111,7 @@ services:
       - xpack.security.transport.ssl.certificate_authorities=certs/ca/ca.crt
       - xpack.security.transport.ssl.verification_mode=certificate
       - xpack.license.self_generated.type=${LICENSE}
+      - xpack.monitoring.allow_legacy_collection=true
     mem_limit: ${ES_MEM_LIMIT}
     ulimits:
       memlock:
@@ -234,7 +235,12 @@ services:
       - "./logstash_ingest_data/:/usr/share/logstash/ingest_data/"
       - "./logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro"
     environment:
-      - xpack.monitoring.enabled=false
+      - xpack.monitoring.enabled=true
+      - xpack.monitoring.allow_legacy_collection=true
+      - xpack.monitoring.elasticsearch.hosts=https://es01:9200
+      - xpack.monitoring.elasticsearch.username=elastic
+      - xpack.monitoring.elasticsearch.password=${ELASTIC_PASSWORD}
+      - xpack.monitoring.elasticsearch.ssl.certificate_authority=certs/ca/ca.crt
       - ELASTIC_USER=elastic
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - ELASTIC_HOSTS=https://es01:9200
@@ -245,7 +251,7 @@ services:
         condition: service_healthy
       es01:
         condition: service_healthy
-    image: docker.elastic.co/beats/elastic-agent:${STACK_VERSION}
+    image: docker.elastic.co/elastic-agent/elastic-agent:${STACK_VERSION}
     volumes:
       - certs:/certs
       - fleetserverdata:/usr/share/elastic-agent
