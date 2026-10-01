@@ -1,0 +1,16 @@
+[project]
+name = "minielk-event"
+version = "0.1.0"
+description = "Send a random ECS conformant event to Elasticsearch or Logstash"
+requires-python = ">=3.8"
+dependencies = []
+
+[project.scripts]
+minielk-event = "event:main"
+
+[tool.setuptools]
+py-modules = ["event"]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"

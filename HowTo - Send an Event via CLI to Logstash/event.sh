@@ -92,50 +92,68 @@ create_message() {
     BUSINESS_SERVICES=("Travel Insurance" "Health Insurance" "Life Insurance" "Car Insurance" "Home Insurance")
     BUSINESS_SERVICE_IDX=$(($RANDOM % 5))
 
-    CLASS="insure69.event.common"
+    DATASET="insure96.event.common"
     OWNER=${TEAMS[TEAM_IDX]}
-    SEVERITY=${SEVERITIES[SEVERITY_IDX]}
+    SEVERITY_NAME=${SEVERITIES[SEVERITY_IDX]}
     PRIORITY=$(($RANDOM % 5))
     CATEGORY=${CATEGORIES[CATEGORY_IDX]}
     CORRELATION_KEY=${CORRELATION_KEYS[CORRELATION_KEYS_IDX]}
     DESCRIPTION="End2End Monitoring Event"
-    DOCUMENTATION="http://www.insure69.de"
+    DOCUMENTATION="http://www.insure96.de"
     HOSTNAME="lxv12345"
     IP_ADDR=$(($RANDOM % 100))
     SOURCE="End2End"
-    SUB_SOURCE="Insure69_E2E_Monitor"
+    SUB_SOURCE="Insure96_E2E_Monitor"
     ORIGIN="SitePerformer"
     SUB_ORIGIN=${PAGES[PAGE_IDX]}
     IT_SERVICE="Web-Portal"
     BUSINESS_SERVICE=${BUSINESS_SERVICES[BUSINESS_SERVICE_IDX]}
-    TAGS="[\"Insure69.com\",\"Insure69.de\"]"
     ACTION="create-incident"
-    JSON_OWNER="[ { \"orga_unit\": \"$OWNER\", \"action\": \"$ACTION\" } ]"
 
-    JSON_MESSAGE="{"
-    JSON_MESSAGE="$JSON_MESSAGE \"elastic_index\":\"$ELASTIC_INDEX\","
-    JSON_MESSAGE="$JSON_MESSAGE \"@timestamp\":\"$TIMESTAMP\","
-    JSON_MESSAGE="$JSON_MESSAGE \"ecm\": {"
-    JSON_MESSAGE="$JSON_MESSAGE \"event\": {"
-    JSON_MESSAGE="$JSON_MESSAGE \"created_at\":\"$TIMESTAMP\","
-    JSON_MESSAGE="$JSON_MESSAGE \"class\":\"$CLASS\","
-    JSON_MESSAGE="$JSON_MESSAGE \"owner\":$JSON_OWNER,"
-    JSON_MESSAGE="$JSON_MESSAGE \"severity\":\"$SEVERITY\","
-    JSON_MESSAGE="$JSON_MESSAGE \"priority\":\"$PRIORITY\","
-    JSON_MESSAGE="$JSON_MESSAGE \"category\":\"$CATEGORY\","
-    JSON_MESSAGE="$JSON_MESSAGE \"correlation_key\": \"$CORRELATION_KEY\","
-    JSON_MESSAGE="$JSON_MESSAGE \"description\": \"$DESCRIPTION\","
-    JSON_MESSAGE="$JSON_MESSAGE \"documentation\": \"$DOCUMENTATION\","
-    JSON_MESSAGE="$JSON_MESSAGE \"hostname\": \"$HOSTNAME\","
-    JSON_MESSAGE="$JSON_MESSAGE \"ip_addr\": \"192.168.1.$IP_ADDR\","
-    JSON_MESSAGE="$JSON_MESSAGE \"source\": \"$SOURCE\","
-    JSON_MESSAGE="$JSON_MESSAGE \"sub_source\": \"$SUB_SOURCE\","
-    JSON_MESSAGE="$JSON_MESSAGE \"origin\": \"$ORIGIN\","
-    JSON_MESSAGE="$JSON_MESSAGE \"sub_origin\": \"$SUB_ORIGIN\","
-    JSON_MESSAGE="$JSON_MESSAGE \"it_service\": \"$IT_SERVICE\","
-    JSON_MESSAGE="$JSON_MESSAGE \"business_service\": \"$BUSINESS_SERVICE\","
-    JSON_MESSAGE="$JSON_MESSAGE \"tags\": $TAGS"
-    JSON_MESSAGE="$JSON_MESSAGE } } }"
+    # ECS (Elastic Common Schema) layout. event.severity is numeric (0=UNKNOWN .. 6=FATAL);
+    # fields without an ECS equivalent go to 'labels' (flat keyword key/values).
+    JSON_MESSAGE=$(cat <<EOF
+{
+  "@timestamp": "$TIMESTAMP",
+  "ecs": { "version": "9.0.0" },
+  "message": "$DESCRIPTION",
+  "event": {
+    "kind": "alert",
+    "category": ["web"],
+    "type": ["info"],
+    "action": "$ACTION",
+    "created": "$TIMESTAMP",
+    "dataset": "$DATASET",
+    "module": "$SOURCE",
+    "provider": "$SUB_SOURCE",
+    "severity": $SEVERITY_IDX,
+    "reference": "$DOCUMENTATION"
+  },
+  "host": {
+    "name": "$HOSTNAME",
+    "hostname": "$HOSTNAME",
+    "ip": ["192.168.1.$IP_ADDR"]
+  },
+  "observer": {
+    "vendor": "$ORIGIN",
+    "type": "synthetic"
+  },
+  "service": {
+    "name": "$IT_SERVICE"
+  },
+  "tags": ["Insure96.com", "Insure96.de"],
+  "labels": {
+    "severity_name": "$SEVERITY_NAME",
+    "priority": "$PRIORITY",
+    "category": "$CATEGORY",
+    "owner": "$OWNER",
+    "correlation_key": "$CORRELATION_KEY",
+    "business_service": "$BUSINESS_SERVICE",
+    "page": "$SUB_ORIGIN"
+  }
+}
+EOF
+)
 }
 
 send_event() {
