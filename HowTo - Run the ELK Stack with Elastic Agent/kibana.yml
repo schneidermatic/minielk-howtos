@@ -5,6 +5,15 @@ xpack.fleet.packages:
     version: latest
   - name: system
     version: latest
+xpack.fleet.outputs:
+  - id: default-output
+    name: default
+    type: elasticsearch
+    hosts: ["https://es01:9200"]
+    is_default: true
+    is_default_monitoring: true
+    ssl:
+      certificate_authorities: ["/certs/ca/ca.crt"]
 xpack.fleet.agentPolicies:
   - name: Fleet-Server-Policy
     id: fleet-server-policy

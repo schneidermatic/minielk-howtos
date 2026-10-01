@@ -154,7 +154,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "curl -I -s --cacert config/certs/ca/ca.crt https://localhost:5601 | grep -q 'HTTP/1.1 302 Found'",
+          "curl -I -s --cacert config/certs/ca/ca.crt https://localhost:5601 | grep -qE 'HTTP/[0-9.]+ 302'",
         ]
       interval: 10s
       timeout: 10s
