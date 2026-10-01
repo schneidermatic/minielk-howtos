@@ -1,0 +1,75 @@
+#!/bin/sh
+#******************************************************************************
+# Copyright 2021 the original author or authors.                              *
+#                                                                             *
+# Licensed under the Apache License, Version 2.0 (the "License");             *
+# you may not use this file except in compliance with the License.            *
+# You may obtain a copy of the License at                                     *
+#                                                                             *
+# http://www.apache.org/licenses/LICENSE-2.0                                  *
+#                                                                             *
+# Unless required by applicable law or agreed to in writing, software         *
+# distributed under the License is distributed on an "AS IS" BASIS,           *
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.    *
+# See the License for the specific language governing permissions and         *
+# limitations under the License.                                              *
+#******************************************************************************/
+export PROJECT_HOME=$(pwd)
+export RESOURCES_HOME="$PROJECT_HOME/../resources"
+
+#==============================================================================
+# SCRIPT:   .xrc
+# PLATFORM: noarch
+# PURPOSE:  Shell environment file for the x_ command space
+#==============================================================================
+
+. "$RESOURCES_HOME/scripts/.xrc"
+
+##----------------------------------------
+## CALL THE SAMPLE APP (creates logs, metrics and traces)
+##----------------------------------------
+x_call() {
+    curl -s "http://localhost:${APP_PORT:-8000}/${1:-}"
+    echo ""
+}
+
+##----------------------------------------
+## GENERATE LOAD: 'n' random calls (default 50) over all endpoints, 'p' pause in sec. (default 0.3)
+##   - successful calls, 4xx (404, 401, 402) and 5xx (500, 504) responses
+##   - => logs (info/warning/error), metrics (counters, histograms, gauge) and traces (incl. errors)
+##----------------------------------------
+x_load() {
+    local n="${1:-50}" pause="${2:-0.3}" base="http://localhost:${APP_PORT:-8000}"
+    # weighted list: "METHOD path" (repeated entries = more frequent)
+    local calls=(
+        "GET /" "GET /" "GET /"
+        "GET /products" "GET /products" "GET /products"
+        "GET /products/7" "GET /products/23" "GET /products/999"
+        "GET /search?q=@" "GET /search?q=@" "GET /search?q=@" "GET /search?q=@"
+        "GET /login?user=alice" "GET /login?user=bob" "GET /login?user=bad-actor"
+        "POST /orders" "POST /orders" "POST /orders"
+        "POST /checkout" "POST /checkout"
+        "GET /slow"
+        "GET /error"
+    )
+    local terms=(laptop phone monitor keyboard mouse model 7 23 42)  # '@' in a search call = random term
+    local i call code
+    declare -A stats
+    for i in $(seq 1 "$n"); do
+        call="${calls[RANDOM % ${#calls[@]}]}"
+        call="${call/@/${terms[RANDOM % ${#terms[@]}]}}"
+        code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 -X "${call% *}" "$base${call#* }")
+        stats[$code]=$(( ${stats[$code]:-0} + 1 ))
+        printf '%3d/%d  %-5s %-24s -> %s\n' "$i" "$n" "${call% *}" "${call#* }" "$code"
+        sleep "$pause"
+    done
+    echo "---- HTTP status summary ----"
+    for code in "${!stats[@]}"; do echo "$code: ${stats[$code]}"; done | sort
+}
+
+##----------------------------------------
+## SHOW THE DOC COUNT PER OTEL DATA STREAM
+##----------------------------------------
+x_otel_status() {
+    curl -s -k -u "elastic:changeme" "https://localhost:9200/_cat/indices/*otel*?h=index,docs.count&s=index"
+}

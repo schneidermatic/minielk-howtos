@@ -40,6 +40,7 @@ Id  | Description
 006 | [HowTo - Run the ELK Stack with Elastic Agent](https://github.com/schneidermatic/MiniELK-HOWTOs/tree/main/HowTo%20-%20Run%20the%20ELK%20Stack%20with%20Elastic%20Agent)
 007 | [HowTo - Run the ELK Stack with Fleet](https://github.com/schneidermatic/MiniELK-HOWTOs/tree/main/HowTo%20-%20Run%20the%20ELK%20Stack%20with%20Fleet)
 008 | [HowTo - Send an Event via CLI to Logstash](https://github.com/schneidermatic/MiniELK-HOWTOs/tree/main/HowTo%20-%20Send%20an%20Event%20via%20CLI%20to%20Logstash)
+009 | [HowTo - Run the ELK Stack with OTEL](https://github.com/schneidermatic/MiniELK-HOWTOs/tree/main/HowTo%20-%20Run%20the%20ELK%20Stack%20with%20OTEL)
 
 ## SETUP
 1. Clone the MiniELK-HOWTOs repo

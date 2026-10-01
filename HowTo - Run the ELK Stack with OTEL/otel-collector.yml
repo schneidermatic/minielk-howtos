@@ -1,0 +1,100 @@
+# Configuration of the Elastic Distribution of OpenTelemetry (EDOT) Collector.
+# Receives OTLP (logs, metrics, traces) from the sample app and writes it natively
+# (OpenTelemetry mapping mode) to Elasticsearch.
+receivers:
+  # infrastructure metrics of the containers the app depends on
+  postgresql:
+    endpoint: postgres:5432
+    username: ${env:POSTGRES_USER}
+    password: ${env:POSTGRES_PASSWORD}
+    databases: [shop]
+    tls:
+      insecure: true
+    collection_interval: 10s
+  redis:
+    endpoint: redis:6379
+    collection_interval: 10s
+  # CPU/memory/network of every container; carries the same container.id the app reports
+  docker_stats:
+    endpoint: unix:///var/run/docker.sock
+    api_version: "1.44"
+    collection_interval: 10s
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    send_batch_size: 1000
+    timeout: 1s
+    send_batch_max_size: 1500
+  # the span's destination (dependency) becomes '<host>:<port>' (e.g. postgres:5432) instead of just the
+  # db.system, so it matches the container that serves it
+  transform/destination:
+    trace_statements:
+      - context: span
+        statements:
+          - set(attributes["peer.service"], Concat([attributes["net.peer.name"], String(attributes["net.peer.port"])], ":")) where attributes["db.system"] != nil and attributes["net.peer.name"] != nil and attributes["net.peer.port"] != nil
+          # newer semantic conventions (e.g. the Elasticsearch client): server.address/server.port
+          - set(attributes["peer.service"], Concat([attributes["server.address"], String(attributes["server.port"])], ":")) where attributes["db.system.name"] != nil and attributes["server.address"] != nil and attributes["server.port"] != nil
+  resource/postgresql:
+    attributes:
+      - {key: host.name, value: postgres, action: upsert}
+      - {key: service.name, value: postgresql, action: upsert}
+  resource/redis:
+    attributes:
+      - {key: host.name, value: redis, action: upsert}
+      - {key: service.name, value: redis, action: upsert}
+  # enriches traces/logs so that they show up properly in Kibana's Observability apps
+  elasticapm: {}
+
+connectors:
+  # derives the aggregated APM metrics (service latency, throughput, ...) from the traces
+  elasticapm: {}
+
+exporters:
+  elasticsearch/otel:
+    endpoints: ["https://es01:9200"]
+    user: elastic
+    password: ${env:ELASTIC_PASSWORD}
+    tls:
+      ca_file: /certs/ca/ca.crt
+    mapping:
+      mode: otel
+    sending_queue:
+      enabled: true
+      num_consumers: 20
+      queue_size: 1000
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [transform/destination, batch, elasticapm]
+      exporters: [elasticapm, elasticsearch/otel]
+    metrics:
+      receivers: [otlp]
+      processors: [batch, elasticapm]
+      exporters: [elasticsearch/otel]
+    metrics/aggregated-otel-metrics:
+      receivers: [elasticapm]
+      exporters: [elasticsearch/otel]
+    logs:
+      receivers: [otlp]
+      processors: [batch, elasticapm]
+      exporters: [elasticsearch/otel]
+    metrics/postgresql:
+      receivers: [postgresql]
+      processors: [resource/postgresql, batch]
+      exporters: [elasticsearch/otel]
+    metrics/redis:
+      receivers: [redis]
+      processors: [resource/redis, batch]
+      exporters: [elasticsearch/otel]
+    metrics/containers:
+      receivers: [docker_stats]
+      processors: [batch]
+      exporters: [elasticsearch/otel]
