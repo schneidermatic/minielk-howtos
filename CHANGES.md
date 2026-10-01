@@ -10,6 +10,7 @@
   is gone as of 9.0).
 * Updated - Legacy/self monitoring now also sets 'xpack.monitoring.allow_legacy_collection=true', required
   since 9.0 to actually activate it.
+* Added - 'HowTo - Run the ELK Stack with Elastic Agent'.
 
 8.14.0 (2024-06-08)
 ---------------------
